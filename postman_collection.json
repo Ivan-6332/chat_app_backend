@@ -1,0 +1,104 @@
+{
+  "info": {
+    "name": "ChatApp Backend API",
+    "description": "Secure encrypted chat application backend API",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "auth_token",
+      "value": "your-jwt-token-here"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Send Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"senderId\": \"auth0|user123\",\n  \"conversationId\": \"conv456\",\n  \"encryptedText\": \"encrypted_message_content_here\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/messages",
+          "host": ["{{base_url}}"],
+          "path": ["messages"]
+        }
+      }
+    },
+    {
+      "name": "Get Messages by Conversation",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/messages/:conversationId",
+          "host": ["{{base_url}}"],
+          "path": ["messages", ":conversationId"],
+          "variable": [
+            {
+              "key": "conversationId",
+              "value": "conv456"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Conversations by User",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/conversations/:userId",
+          "host": ["{{base_url}}"],
+          "path": ["conversations", ":userId"],
+          "variable": [
+            {
+              "key": "userId",
+              "value": "auth0|user123"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
