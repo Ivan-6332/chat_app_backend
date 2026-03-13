@@ -4,6 +4,7 @@ import (
 	"chatapp-backend/services"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"chatapp-backend/models"
 
@@ -82,7 +83,7 @@ func (uc *UserController) GetUserByID(c *gin.Context) {
 
 	// Defensive fallback: if route matching sends /users/search here,
 	// delegate to the search handler instead of returning a misleading 404.
-	if auth0ID == "search" {
+	if strings.HasPrefix(strings.ToLower(auth0ID), "search") {
 		uc.SearchUsers(c)
 		return
 	}
