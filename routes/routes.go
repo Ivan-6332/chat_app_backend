@@ -35,10 +35,12 @@ func SetupRoutes(
 		v1.GET("/messages/:conversationId", messageController.GetMessages)
 
 		// Conversation routes
+		v1.POST("/conversations", conversationController.CreateConversation)
 		v1.GET("/conversations/:userId", conversationController.GetConversations)
 
 		// User routes
 		v1.GET("/users/me", userController.GetCurrentUser)
+		v1.GET("/users/search", userController.SearchUsers)
 		v1.GET("/users/:id", userController.GetUserByID)
 	}
 }

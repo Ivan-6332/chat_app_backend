@@ -3,6 +3,7 @@ package controllers
 import (
 	"chatapp-backend/services"
 	"net/http"
+	"strconv"
 
 	"chatapp-backend/models"
 
@@ -75,4 +76,56 @@ func (uc *UserController) GetUserByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(user, "User retrieved successfully"))
+}
+
+// SearchUsers handles GET /users/search?username={username}&limit={limit}
+// @Summary Search users by username
+// @Description Search users with case-insensitive partial match by username
+// @Tags users
+// @Produce json
+// @Param username query string true "Username query"
+// @Param limit query int false "Maximum results (default 20, max 50)"
+// @Success 200 {object} models.APIResponse
+// @Failure 400 {object} models.APIResponse
+// @Failure 401 {object} models.APIResponse
+// @Failure 500 {object} models.APIResponse
+// @Router /users/search [get]
+func (uc *UserController) SearchUsers(c *gin.Context) {
+	usernameQuery := c.Query("username")
+	if usernameQuery == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("username query parameter is required"))
+		return
+	}
+
+	limit := int64(20)
+	if rawLimit := c.Query("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("limit must be a positive integer"))
+			return
+		}
+
+		if parsed > 50 {
+			parsed = 50
+		}
+
+		limit = int64(parsed)
+	}
+
+	claims, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("User not authenticated"))
+		return
+	}
+
+	claimsMap := claims.(jwt.MapClaims)
+	auth0ID := claimsMap["sub"].(string)
+
+	users, err := uc.userService.SearchUsersByUsername(usernameQuery, auth0ID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Failed to search users: "+err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(users, "Users retrieved successfully"))
 }

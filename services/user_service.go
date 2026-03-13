@@ -8,6 +8,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // UserService handles user business logic with MongoDB
@@ -85,4 +86,40 @@ func (s *UserService) GetUserByAuth0ID(auth0ID string) (*models.User, error) {
 	}
 
 	return &user, nil
+}
+
+// SearchUsersByUsername searches users by username using a case-insensitive partial match
+func (s *UserService) SearchUsersByUsername(usernameQuery string, excludeAuth0ID string, limit int64) ([]models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	filter := bson.M{
+		"username": bson.M{
+			"$regex":   usernameQuery,
+			"$options": "i",
+		},
+	}
+
+	if excludeAuth0ID != "" {
+		filter["auth0_id"] = bson.M{"$ne": excludeAuth0ID}
+	}
+
+	opts := options.Find().SetLimit(limit)
+
+	cursor, err := s.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var users []models.User
+	if err := cursor.All(ctx, &users); err != nil {
+		return nil, err
+	}
+
+	if users == nil {
+		return []models.User{}, nil
+	}
+
+	return users, nil
 }

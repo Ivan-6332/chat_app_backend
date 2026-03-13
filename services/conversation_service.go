@@ -4,6 +4,7 @@ import (
 	"chatapp-backend/database"
 	"chatapp-backend/models"
 	"context"
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -165,4 +166,54 @@ func (s *ConversationService) EnsureConversationExists(conversationID string, se
 		return "", err
 	}
 	return objID.Hex(), nil
+}
+
+// CreateDirectConversation creates a one-to-one conversation or returns the existing one
+func (s *ConversationService) CreateDirectConversation(members []string) (*models.Conversation, error) {
+	if len(members) != 2 {
+		return nil, fmt.Errorf("exactly two members are required")
+	}
+
+	if members[0] == "" || members[1] == "" {
+		return nil, fmt.Errorf("member IDs cannot be empty")
+	}
+
+	if members[0] == members[1] {
+		return nil, fmt.Errorf("conversation members must be different users")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Enforce exact 1:1 conversation match (same two users, no extras)
+	filter := bson.M{
+		"members": bson.M{
+			"$all":  members,
+			"$size": 2,
+		},
+	}
+
+	var existing models.Conversation
+	err := s.collection.FindOne(ctx, filter).Decode(&existing)
+	if err == nil {
+		return &existing, nil
+	}
+
+	if err != mongo.ErrNoDocuments {
+		return nil, err
+	}
+
+	conversation := models.Conversation{
+		ID:            primitive.NewObjectID(),
+		Members:       members,
+		CreatedAt:     time.Now(),
+		LastMessageAt: time.Now(),
+	}
+
+	_, err = s.collection.InsertOne(ctx, conversation)
+	if err != nil {
+		return nil, err
+	}
+
+	return &conversation, nil
 }

@@ -46,3 +46,31 @@ func (cc *ConversationController) GetConversations(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.SuccessResponse(conversations, "Conversations retrieved successfully"))
 }
+
+// CreateConversation handles POST /conversations - create or get a direct conversation
+// @Summary Create direct conversation
+// @Description Create a direct conversation between two users or return an existing one
+// @Tags conversations
+// @Accept json
+// @Produce json
+// @Param request body models.CreateConversationRequest true "Conversation members"
+// @Success 201 {object} models.APIResponse
+// @Failure 400 {object} models.APIResponse
+// @Failure 500 {object} models.APIResponse
+// @Router /conversations [post]
+func (cc *ConversationController) CreateConversation(c *gin.Context) {
+	var req models.CreateConversationRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Invalid request body: "+err.Error()))
+		return
+	}
+
+	conversation, err := cc.conversationService.CreateDirectConversation(req.Members)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to create conversation: "+err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.SuccessResponse(conversation, "Conversation ready"))
+}

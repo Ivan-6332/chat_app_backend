@@ -14,3 +14,8 @@ type Conversation struct {
 	LastMessageAt time.Time          `json:"lastMessageAt" bson:"last_message_at"`
 	CreatedAt     time.Time          `json:"createdAt" bson:"created_at"`
 }
+
+// CreateConversationRequest represents the request body for creating a direct conversation
+type CreateConversationRequest struct {
+	Members []string `json:"members" binding:"required,min=2,max=2"`
+}
