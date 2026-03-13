@@ -42,10 +42,26 @@ func (uc *UserController) GetCurrentUser(c *gin.Context) {
 	claimsMap := claims.(jwt.MapClaims)
 	auth0ID := claimsMap["sub"].(string)
 
-	// Get user from database
-	user, err := uc.userService.GetUserByAuth0ID(auth0ID)
+	email := ""
+	if emailClaim, ok := claimsMap["email"].(string); ok {
+		email = emailClaim
+	}
+
+	username := ""
+	if preferredUsername, ok := claimsMap["preferred_username"].(string); ok && preferredUsername != "" {
+		username = preferredUsername
+	} else if nicknameClaim, ok := claimsMap["nickname"].(string); ok && nicknameClaim != "" {
+		username = nicknameClaim
+	} else if nameClaim, ok := claimsMap["name"].(string); ok && nameClaim != "" {
+		username = nameClaim
+	} else {
+		username = auth0ID
+	}
+
+	// Ensure user exists in local DB so contacts/search can operate on Mongo-backed user data.
+	user, err := uc.userService.GetOrCreateUser(auth0ID, username, email)
 	if err != nil {
-		c.JSON(http.StatusNotFound, models.ErrorResponse("User not found"))
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Failed to process user profile"))
 		return
 	}
 
@@ -63,6 +79,13 @@ func (uc *UserController) GetCurrentUser(c *gin.Context) {
 // @Router /users/{id} [get]
 func (uc *UserController) GetUserByID(c *gin.Context) {
 	auth0ID := c.Param("id")
+
+	// Defensive fallback: if route matching sends /users/search here,
+	// delegate to the search handler instead of returning a misleading 404.
+	if auth0ID == "search" {
+		uc.SearchUsers(c)
+		return
+	}
 
 	if auth0ID == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("User ID is required"))
