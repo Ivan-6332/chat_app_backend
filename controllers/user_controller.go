@@ -136,6 +136,11 @@ func (uc *UserController) SearchUsers(c *gin.Context) {
 		limit = int64(parsed)
 	}
 
+	includeSelf := false
+	if c.Query("includeSelf") == "true" {
+		includeSelf = true
+	}
+
 	claims, exists := c.Get("claims")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse("User not authenticated"))
@@ -144,8 +149,12 @@ func (uc *UserController) SearchUsers(c *gin.Context) {
 
 	claimsMap := claims.(jwt.MapClaims)
 	auth0ID := claimsMap["sub"].(string)
+	excludeAuth0ID := auth0ID
+	if includeSelf {
+		excludeAuth0ID = ""
+	}
 
-	users, err := uc.userService.SearchUsersByUsername(usernameQuery, auth0ID, limit)
+	users, err := uc.userService.SearchUsersByUsername(usernameQuery, excludeAuth0ID, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Failed to search users: "+err.Error()))
 		return

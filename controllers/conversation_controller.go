@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // ConversationController handles conversation-related HTTP requests
@@ -66,7 +67,37 @@ func (cc *ConversationController) CreateConversation(c *gin.Context) {
 		return
 	}
 
-	conversation, err := cc.conversationService.CreateDirectConversation(req.Members)
+	claims, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("User not authenticated"))
+		return
+	}
+
+	claimsMap := claims.(jwt.MapClaims)
+	auth0ID := claimsMap["sub"].(string)
+
+	var members []string
+	if req.ContactUserID != "" {
+		if req.ContactUserID == auth0ID {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("contactUserId must be a different user"))
+			return
+		}
+		members = []string{auth0ID, req.ContactUserID}
+	} else {
+		if len(req.Members) != 2 {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("members must contain exactly 2 user IDs"))
+			return
+		}
+
+		if req.Members[0] != auth0ID && req.Members[1] != auth0ID {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("authenticated user must be included in members"))
+			return
+		}
+
+		members = req.Members
+	}
+
+	conversation, err := cc.conversationService.CreateDirectConversation(members)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to create conversation: "+err.Error()))
 		return

@@ -17,5 +17,8 @@ type Conversation struct {
 
 // CreateConversationRequest represents the request body for creating a direct conversation
 type CreateConversationRequest struct {
-	Members []string `json:"members" binding:"required,min=2,max=2"`
+	// Preferred flow: send only contactUserId, backend will pair it with authenticated user.
+	ContactUserID string `json:"contactUserId,omitempty"`
+	// Backward compatibility: frontend may still send both members.
+	Members []string `json:"members,omitempty"`
 }
