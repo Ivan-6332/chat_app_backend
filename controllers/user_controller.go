@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"chatapp-backend/config"
 	"chatapp-backend/services"
 	"net/http"
 	"strconv"
@@ -161,4 +162,130 @@ func (uc *UserController) SearchUsers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(users, "Users retrieved successfully"))
+}
+
+// SyncUsers handles POST /users/sync - synchronize Auth0 users into MongoDB
+// @Summary Sync users from Auth0
+// @Description Pull users from Auth0 Management API and upsert into MongoDB
+// @Tags users
+// @Produce json
+// @Param maxPages query int false "Max pages to sync (default 3)"
+// @Success 200 {object} models.APIResponse
+// @Failure 400 {object} models.APIResponse
+// @Failure 401 {object} models.APIResponse
+// @Failure 403 {object} models.APIResponse
+// @Failure 500 {object} models.APIResponse
+// @Router /users/sync [post]
+func (uc *UserController) SyncUsers(c *gin.Context) {
+	claims, exists := c.Get("claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("User not authenticated"))
+		return
+	}
+
+	claimsMap := claims.(jwt.MapClaims)
+	if !hasScope(claimsMap, "sync:users") {
+		c.JSON(http.StatusForbidden, models.ErrorResponse("Missing required scope: sync:users"))
+		return
+	}
+
+	if config.AppConfig.Auth0SyncServiceTokenOnly && !isServiceToken(claimsMap) {
+		c.JSON(http.StatusForbidden, models.ErrorResponse("/users/sync is restricted to service/admin tokens"))
+		return
+	}
+
+	callerClientID := getCallerClientID(claimsMap)
+	if len(config.AppConfig.Auth0SyncAllowedClientIDs) > 0 {
+		if callerClientID == "" || !contains(config.AppConfig.Auth0SyncAllowedClientIDs, callerClientID) {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("caller client_id is not allowed for sync"))
+			return
+		}
+	}
+
+	maxPages := 3
+	if raw := c.Query("maxPages"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("maxPages must be a positive integer"))
+			return
+		}
+		if parsed > 20 {
+			parsed = 20
+		}
+		maxPages = parsed
+	}
+
+	summary, err := uc.userService.SyncUsersFromAuth0(maxPages)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Failed to sync users: "+err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse(summary, "Users synchronized successfully"))
+}
+
+func hasScope(claims jwt.MapClaims, required string) bool {
+	if permissionsRaw, ok := claims["permissions"]; ok {
+		if permissions, ok := permissionsRaw.([]interface{}); ok {
+			for _, p := range permissions {
+				if scope, ok := p.(string); ok && scope == required {
+					return true
+				}
+			}
+		}
+	}
+
+	if scopeRaw, ok := claims["scope"]; ok {
+		if scopeText, ok := scopeRaw.(string); ok {
+			for _, scope := range strings.Fields(scopeText) {
+				if scope == required {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func isServiceToken(claims jwt.MapClaims) bool {
+	if gtyRaw, ok := claims["gty"]; ok {
+		if gty, ok := gtyRaw.(string); ok && strings.EqualFold(gty, "client-credentials") {
+			return true
+		}
+	}
+
+	if subRaw, ok := claims["sub"]; ok {
+		if sub, ok := subRaw.(string); ok {
+			return strings.HasSuffix(sub, "@clients")
+		}
+	}
+
+	return false
+}
+
+func getCallerClientID(claims jwt.MapClaims) string {
+	if azpRaw, ok := claims["azp"]; ok {
+		if azp, ok := azpRaw.(string); ok {
+			return azp
+		}
+	}
+
+	if clientIDRaw, ok := claims["client_id"]; ok {
+		if clientID, ok := clientIDRaw.(string); ok {
+			return clientID
+		}
+	}
+
+	return ""
+}
+
+func contains(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+
+	return false
 }

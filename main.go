@@ -56,6 +56,13 @@ func main() {
 	// Setup routes
 	routes.SetupRoutes(router, messageController, conversationController, userController)
 
+	// Optional background sync job to keep Mongo users aligned with Auth0.
+	syncCtx, cancelSync := context.WithCancel(context.Background())
+	defer cancelSync()
+	if config.AppConfig.Auth0SyncEnabled {
+		go startUserSyncJob(syncCtx, userService)
+	}
+
 	// Create HTTP server
 	port := ":" + config.AppConfig.Port
 	srv := &http.Server{
@@ -79,6 +86,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	cancelSync()
 
 	log.Println("Shutting down server...")
 
@@ -91,4 +99,41 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+func startUserSyncJob(ctx context.Context, userService *services.UserService) {
+	interval := time.Duration(config.AppConfig.Auth0SyncIntervalMinutes) * time.Minute
+	if interval <= 0 {
+		interval = 30 * time.Minute
+	}
+
+	maxPages := config.AppConfig.Auth0SyncMaxPages
+	if maxPages <= 0 {
+		maxPages = 3
+	}
+
+	run := func() {
+		summary, err := userService.SyncUsersFromAuth0(maxPages)
+		if err != nil {
+			log.Printf("[SYNC] Auth0->Mongo sync failed: %v", err)
+			return
+		}
+		log.Printf("[SYNC] Auth0->Mongo sync complete: fetched=%d upserted=%d", summary.Fetched, summary.Upserted)
+	}
+
+	// Run one sync on startup so search data is available quickly.
+	run()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[SYNC] User sync job stopped")
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
 }

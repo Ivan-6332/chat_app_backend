@@ -41,6 +41,7 @@ func SetupRoutes(
 		// User routes
 		v1.GET("/users/me", userController.GetCurrentUser)
 		v1.GET("/users/search", userController.SearchUsers)
+		v1.POST("/users/sync", userController.SyncUsers)
 		v1.GET("/users/:id", userController.GetUserByID)
 	}
 }
